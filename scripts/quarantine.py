@@ -57,8 +57,8 @@ def build_plan(rows, categories=None, actions=None, senders=None, folders=None, 
 
 
 def print_plan(items, dest):
-    print("Foreslått handling: FLYTT til '%s' (ingen sletting). Antall: %d\n" % (dest, len(items)))
-    print("%-24s %-8s %-10s %-30s %-45s %s" % ("Mappe", "UID", "Dato", "Avsender", "Emne", "Handling"))
+    print("Proposed action: MOVE to '%s' (no deletion). Count: %d\n" % (dest, len(items)))
+    print("%-24s %-8s %-10s %-30s %-45s %s" % ("Folder", "UID", "Date", "Sender", "Subject", "Action"))
     for i in items:
         print("%-24s %-8s %-10s %-30s %-45s %s" % (
             i["folder"][:24], i["uid"], (i.get("date") or "")[:10], i["from_addr"][:30],
@@ -136,22 +136,22 @@ def verify(client, items, log):
     for folder, group in by_folder.items():
         info = client.examine(folder)
         if info is None:
-            problems += [(i, "mappen finnes ikke") for i in group]
+            problems += [(i, "folder does not exist") for i in group]
             continue
         if info["uidvalidity"] != group[0]["uidvalidity"]:
-            problems += [(i, "UIDVALIDITY endret (%s -> %s); eksporten er utdatert" %
+            problems += [(i, "UIDVALIDITY changed (%s -> %s); the export is outdated" %
                           (group[0]["uidvalidity"], info["uidvalidity"])) for i in group]
             continue
         existing = set(client.uid_search("ALL"))
         live = [i for i in group if i["uid"] in existing]
-        problems += [(i, "meldingen finnes ikke lenger") for i in group if i["uid"] not in existing]
+        problems += [(i, "message no longer exists") for i in group if i["uid"] not in existing]
         ids = {}
         for k in range(0, len(live), 50):
             ids.update(message_ids(client, [i["uid"] for i in live[k:k + 50]]))
         good = []
         for i in live:
             if i.get("message_id") and ids.get(i["uid"], "") != _norm(i["message_id"]):
-                problems.append((i, "Message-ID stemmer ikke"))
+                problems.append((i, "Message-ID mismatch"))
             else:
                 good.append(i)
         ok[folder] = (group[0]["uidvalidity"], good)
@@ -167,17 +167,17 @@ def apply_plan(client, plan, execute, dest, log, confirm=input):
         raise SystemExit("Refusing destination %r (Trash/Junk-like)." % dest)
     ok, problems = verify(client, plan["items"], log)
     total = sum(len(g) for _, g in ok.values())
-    print("Verifisert mot postkassen: %d kan flyttes, %d hoppes over." % (total, len(problems)))
+    print("Verified against the mailbox: %d can be moved, %d skipped." % (total, len(problems)))
     for i, why in problems:
-        print("  HOPPER OVER %s UID %s: %s" % (i["folder"], i["uid"], why))
+        print("  SKIPPING %s UID %s: %s" % (i["folder"], i["uid"], why))
     if not execute:
-        print("\nTØRRKJØRING: ingenting er endret. Bruk --execute for å flytte til '%s'." % dest)
+        print("\nDRY RUN: nothing was changed. Use --execute to move to '%s'." % dest)
         return {"moved": 0, "verified": total, "skipped": len(problems)}
     if total == 0:
         return {"moved": 0, "verified": 0, "skipped": len(problems)}
-    answer = confirm("\nSkriv nøyaktig 'FLYTT %d' for å flytte disse %d meldingene til '%s': " % (total, total, dest))
-    if answer.strip() != "FLYTT %d" % total:
-        print("Avbrutt. Ingenting er endret.")
+    answer = confirm("\nType exactly 'MOVE %d' to move these %d messages to '%s': " % (total, total, dest))
+    if answer.strip() != "MOVE %d" % total:
+        print("Aborted. Nothing was changed.")
         log.write("execute_declined", planned=total)
         return {"moved": 0, "verified": total, "skipped": len(problems)}
     if dest not in [f.name for f in folders]:
@@ -187,7 +187,7 @@ def apply_plan(client, plan, execute, dest, log, confirm=input):
     moved = failed = 0
     for folder, (uv, good) in ok.items():
         if client.select_rw(folder) != uv:  # re-check right before writing
-            print("  UIDVALIDITY endret for %s, hopper over mappen" % folder)
+            print("  UIDVALIDITY changed for %s, skipping the folder" % folder)
             failed += len(good)
             continue
         for k in range(0, len(good), 25):
@@ -201,7 +201,7 @@ def apply_plan(client, plan, execute, dest, log, confirm=input):
             else:
                 failed += len(batch)
                 log.write("move_failed", mutating=True, folder=folder, uids=uids, dest=dest)
-    print("\nFerdig: %d flyttet til '%s', %d feilet/hoppet over. Ingenting er slettet." %
+    print("\nDone: %d moved to '%s', %d failed/skipped. Nothing was deleted." %
           (moved, dest, failed + len(problems)))
     return {"moved": moved, "verified": total, "skipped": failed + len(problems)}
 
@@ -239,7 +239,7 @@ def main(argv=None, password=None, client_factory=None, confirm=input):
         os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
         with open(args.output, "w", encoding="utf-8") as fh:
             json.dump(plan, fh, ensure_ascii=False, indent=1)
-        print("\nPlan lagret: %s (ingenting er flyttet)." % args.output)
+        print("\nPlan saved: %s (nothing was moved)." % args.output)
         return plan
 
     with open(args.plan, encoding="utf-8") as fh:

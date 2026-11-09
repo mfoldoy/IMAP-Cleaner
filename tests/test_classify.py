@@ -101,7 +101,7 @@ class ClassifyTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as buf:
             report.main(["--classified", cls_path, "--output-dir", self.tmp])
         md = open(os.path.join(self.tmp, "report.md"), encoding="utf-8").read()
-        for heading in ("Sammendrag", "Avsendere", "Phishing", "Nyhetsbrev", "Usikre", "Anbefalte handlinger"):
+        for heading in ("Summary", "Top senders", "Phishing", "Newsletter", "Uncertain", "Recommended actions"):
             self.assertIn(heading, md)
         self.assertTrue(os.path.exists(os.path.join(self.tmp, "candidates.csv")))
         # stdout summary must be aggregate only: no subjects or sender addresses

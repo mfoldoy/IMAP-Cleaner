@@ -25,7 +25,7 @@ function Run-Py([string[]]$PyArgs) {
     if ($LASTEXITCODE -ne 0) { throw "Steg feilet (exit $LASTEXITCODE)" }
 }
 
-if (-not $User) { $User = Read-Host "Full e-postadresse" }
+if (-not $User) { $User = Read-Host "Full email address" }
 New-Item -ItemType Directory -Force reports, logs | Out-Null
 
 $audit = @("scripts\imap_audit.py", "--user", $User, "--output", "reports\mailbox-audit.jsonl")
@@ -36,16 +36,16 @@ if ($TestConnection) {
 if (-not $ExcludeTrashJunk) { $audit += "--include-trash-junk" }
 if ($Limit -gt 0) { $audit += @("--limit", $Limit) }
 
-Write-Host "`n[1/3] Skrivebeskyttet eksport (EXAMINE + BODY.PEEK). Skriv passordet nar du blir bedt om det."
+Write-Host "`n[1/3] Read-only export (EXAMINE + BODY.PEEK). Type the password when prompted."
 Run-Py $audit
 
-Write-Host "`n[2/3] Lokal klassifisering (ingen data forlater maskinen)"
+Write-Host "`n[2/3] Local classification (no data leaves this machine)"
 $cls = @("scripts\classify.py", "--input", "reports\mailbox-audit.jsonl", "--output", "reports\classified.jsonl", "--llm", $Llm)
 if ($Llm -ne "off") { $cls += @("--llm-model", $Model, "--llm-max", $LlmMax) }
 if ($LlmUrl) { $cls += @("--llm-url", $LlmUrl) }
 Run-Py $cls
 
-Write-Host "`n[3/3] Rapport"
+Write-Host "`n[3/3] Report"
 Run-Py @("scripts\report.py", "--classified", "reports\classified.jsonl")
 
-Write-Host "`nFerdig. Apne reports\report.md og reports\candidates.csv selv. Ingenting i postkassen er endret."
+Write-Host "`nDone. Open reports\report.md and reports\candidates.csv yourself. Nothing in the mailbox was changed."

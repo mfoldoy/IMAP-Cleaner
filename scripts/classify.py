@@ -134,47 +134,47 @@ def analyse(r, ctx):
             brand = b
             break
     if brand:
-        t(4, "avsender utgir seg for å være '%s' men domenet er %s" % (brand, host))
+        t(4, "sender impersonates '%s' but the domain is %s" % (brand, host))
     if auth.get("spf") == "fail":
-        t(3, "SPF feilet")
+        t(3, "SPF failed")
     if auth.get("dmarc") == "fail":
-        t(2, "DMARC feilet")
+        t(2, "DMARC failed")
     if auth.get("dkim") == "fail":
-        t(2, "DKIM feilet")
+        t(2, "DKIM failed")
     if auth.get("spf") == "softfail":
         t(1, "SPF softfail")
     if r.get("ip_links"):
-        t(3, "lenke til rå IP-adresse")
+        t(3, "link to a raw IP address")
     if r.get("href_text_mismatch"):
-        t(3, "lenketekst viser annet domene enn lenkens mål")
+        t(3, "link text shows a different domain than the link target")
     if r.get("shortener_links"):
-        t(1, "lenkeforkorter")
+        t(1, "link shortener")
     if r.get("punycode_links"):
-        t(2, "punycode-domene i lenke")
+        t(2, "punycode domain in link")
     if any(host.endswith(x) for x in R.TLD_SUSPICIOUS):
-        t(2, "avsenderdomene med mistenkelig toppdomene")
+        t(2, "sender domain with suspicious TLD")
     rt = r.get("reply_to_addr", "")
     if rt and registrable_domain(rt.split("@")[-1]) != reg and not esp:
-        t(2, "Reply-To peker til et annet domene")
+        t(2, "Reply-To points to a different domain")
     if re.search(r"[\w.+-]+@[\w-]+\.\w+", name) and name.lower() != frm:
-        t(3, "visningsnavn inneholder en annen e-postadresse")
+        t(3, "display name contains a different email address")
     risky = [a["name"] for a in r.get("attachments", [])
              if a.get("name", "").lower().endswith(R.RISKY_EXT)]
     if risky:
-        t(3, "risikabelt vedlegg (%s)" % ", ".join(risky[:2]))
+        t(3, "risky attachment (%s)" % ", ".join(risky[:2]))
     if r.get("x_spam_flag") == "yes" or r.get("x_spam_status", "").lower().startswith("yes"):
-        t(4, "serverens spamfilter markerte meldingen")
+        t(4, "server spam filter flagged the message")
     ph = _hits(text, R.KW_PHISH)
     if ph:
-        t(min(3, len(ph)), "phishing-typiske formuleringer (%s)" % ", ".join(ph[:3]))
+        t(min(3, len(ph)), "typical phishing phrases (%s)" % ", ".join(ph[:3]))
     sp = _hits(text, R.KW_SPAM)
     if sp:
-        t(min(6, 2 * len(sp)), "spam-typiske formuleringer (%s)" % ", ".join(sp[:3]))
+        t(min(6, 2 * len(sp)), "typical spam phrases (%s)" % ", ".join(sp[:3]))
     if r.get("folder_role") == "junk":
-        t(1, "ligger i søppelpost-mappen")
+        t(1, "located in the junk folder")
     direct = ctx.account in r.get("to_addrs", []) + r.get("cc_addrs", [])
     if ctx.account and not direct and not bulk:
-        t(1, "du står ikke som direkte mottaker")
+        t(1, "you are not a direct recipient")
 
     trusted_domain = reg in R.GOVERNMENT_DOMAINS or reg in R.FINANCIAL_DOMAINS or \
         reg in R.ACCOUNT_SECURITY_DOMAINS or host in R.ACCOUNT_SECURITY_DOMAINS or is_gov_domain(reg, host)
@@ -186,26 +186,26 @@ def analyse(r, ctx):
 
     # --- hard protection --------------------------------------------------
     if frm in ctx.known and not bulk:
-        hard.append("du har selv skrevet til denne avsenderen")
-        add("important_or_personal", 6, "du har tidligere sendt e-post til avsenderen")
+        hard.append("you have written to this sender yourself")
+        add("important_or_personal", 6, "you have previously emailed the sender")
     if "\\Answered" in flags or "\\Forwarded" in flags:
-        hard.append("meldingen er besvart/videresendt")
-        add("important_or_personal", 5, "meldingen er besvart eller videresendt")
+        hard.append("message was answered/forwarded")
+        add("important_or_personal", 5, "message was answered or forwarded")
     if "\\Flagged" in flags:
-        hard.append("meldingen er flagget av deg")
-        add("important_or_personal", 4, "meldingen er flagget")
+        hard.append("message was flagged by you")
+        add("important_or_personal", 4, "message is flagged")
     if ctx.sender_answered.get(frm) and not bulk:
-        hard.append("du har besvart tidligere e-post fra avsenderen")
-        add("important_or_personal", 3, "tidligere besvart avsender")
+        hard.append("you have answered earlier mail from this sender")
+        add("important_or_personal", 3, "previously answered sender")
     internal = bool(ctx.own_domain) and not ctx.own_is_freemail and reg == ctx.own_domain \
         and not auth_fail and not bulk
     if internal:
-        hard.append("avsender i eget domene")
-        add("work", 5, "avsender i samme domene som postkassen")
+        hard.append("sender in own domain")
+        add("work", 5, "sender in the same domain as the mailbox")
     thread = r.get("in_reply_to") and re.match(r"\s*(re|sv|fw|vs|fwd)\s*:", subj) and not bulk
     if thread:
-        hard.append("del av en samtale (svar-tråd)")
-        add("important_or_personal", 2, "del av en samtaletråd")
+        hard.append("part of a conversation (reply thread)")
+        add("important_or_personal", 2, "part of a conversation thread")
 
     # --- category scoring -------------------------------------------------
     promo_kw = _hits(subj, R.KW_MARKETING)
@@ -224,9 +224,9 @@ def analyse(r, ctx):
     nlw = (3 if r.get("list_id") else 0) + (2 if r.get("list_unsubscribe") else 0) + \
         min(3, len(nl)) + (2 if _hits(subj, R.KW_NEWSLETTER) else 0)
     if nlw:
-        add("newsletter", nlw, "nyhetsbrev-signaler (List-Id/avmelding/formuleringer)")
+        add("newsletter", nlw, "newsletter signals (List-Id/unsubscribe/phrasing)")
     if mkt:
-        add("marketing", mkt, "markedsføringsspråk/-infrastruktur (%s)" %
+        add("marketing", mkt, "marketing language/infrastructure (%s)" %
             ", ".join((promo_kw + promo_body)[:3]))
 
     noreply = bool(re.search(R.NOREPLY_RX, frm))
@@ -234,34 +234,34 @@ def analyse(r, ctx):
     auto = (2 if noreply else 0) + (3 if r.get("auto_submitted", "no") not in ("", "no") else 0) + \
         min(3, len(auto_kw))
     if auto:
-        add("automated_notification", auto, "automatisk generert melding")
+        add("automated_notification", auto, "automatically generated message")
 
     if is_gov_domain(reg, host) and not promotional and not auth_fail and (auth_ok or not auth.get("spf")):
-        add("government_or_legal", 6, "offentlig avsenderdomene (%s)" % reg)
+        add("government_or_legal", 6, "government sender domain (%s)" % reg)
     gov_s, gov_b = _hits(subj, R.KW_GOV_LEGAL), _hits(body, R.KW_GOV_LEGAL)
     if gov_s or gov_b:
-        add("government_or_legal", 3 * min(1, len(gov_s)) + min(2, len(gov_b)), "offentlig/juridisk innhold")
+        add("government_or_legal", 3 * min(1, len(gov_s)) + min(2, len(gov_b)), "government/legal content")
     if reg in R.FINANCIAL_DOMAINS and not promotional and not auth_fail:
-        add("financial_or_receipt", 4, "kjent bank/leverandør (%s)" % reg)
+        add("financial_or_receipt", 4, "known bank/vendor (%s)" % reg)
     if receipt_subj:
-        add("financial_or_receipt", 4, "faktura/kvittering/bestilling i emnet (%s)" % ", ".join(receipt_subj[:2]))
+        add("financial_or_receipt", 4, "invoice/receipt/order in the subject (%s)" % ", ".join(receipt_subj[:2]))
     rb = _hits(body, R.KW_RECEIPT)
     if rb and not promotional:
-        add("financial_or_receipt", min(2, len(rb)), "økonomi-relatert innhold")
+        add("financial_or_receipt", min(2, len(rb)), "finance-related content")
     sec_s, sec_b = _hits(subj, R.KW_SECURITY), _hits(body, R.KW_SECURITY)
     if sec_s or sec_b:
         add("security_or_account", 4 * min(1, len(sec_s)) + min(2, len(sec_b)),
-            "kontosikkerhet/engangskode (%s)" % ", ".join((sec_s + sec_b)[:2]))
+            "account security/one-time code (%s)" % ", ".join((sec_s + sec_b)[:2]))
         if (reg in R.ACCOUNT_SECURITY_DOMAINS or host in R.ACCOUNT_SECURITY_DOMAINS) and auth_ok:
-            add("security_or_account", 3, "kjent kontotilbyder (%s)" % reg)
+            add("security_or_account", 3, "known account provider (%s)" % reg)
 
     if not bulk and not esp and not noreply and looks_like_person(name) and not trusted_domain and \
             not promotional and threat < 4 and direct and len(text) > 30 and not auto:
-        add("important_or_personal", 3, "ser ut som en personlig melding fra en navngitt person")
+        add("important_or_personal", 3, "looks like a personal message from a named person")
     work_kw = _hits(text, ["møte", "referat", "prosjekt", "leveranse", "frist", "deadline",
                            "meeting", "agenda", "teams", "vedlagt", "status"])
     if work_kw and internal:
-        add("work", min(2, len(work_kw)), "arbeidsrelatert innhold")
+        add("work", min(2, len(work_kw)), "work-related content")
 
     if threat >= 4:
         score["spam_or_phishing"] = threat
@@ -278,7 +278,7 @@ def analyse(r, ctx):
         cat = top_cat
         if prot and top_cat not in PROTECTED and not (top_cat == "spam_or_phishing" and threat >= 8 and not hard):
             cat, top = prot[0]
-            reasons.append("beskyttet kategori har forrang over %s" % top_cat)
+            reasons.append("protected category takes precedence over %s" % top_cat)
         conf = min(0.97, 0.45 + 0.06 * top + 0.04 * max(0, top - second))
 
     protected = cat in PROTECTED
@@ -292,7 +292,7 @@ def analyse(r, ctx):
     age = (ctx.now - dt).days if dt and dt.tzinfo else None
 
     if cat in ("newsletter", "marketing") and never_read and recurring_bulk:
-        reasons.append("gjentakende bulk-avsender der %d av %d meldinger er uleste" %
+        reasons.append("recurring bulk sender where %d of %d messages are unread" %
                        (ctx.sender_unseen[frm], ctx.sender_n[frm]))
 
     # --- action ------------------------------------------------------------
@@ -319,7 +319,7 @@ def analyse(r, ctx):
     if cat == "spam_or_phishing":
         kind = "phishing" if (brand or r.get("ip_links") or r.get("href_text_mismatch") or len(ph) >= 2) else "spam"
     if conflict or kind == "phishing":
-        signals.append("mulig phishing: ikke åpne lenker eller vedlegg")
+        signals.append("possible phishing: do not open links or attachments")
 
     return {
         "category": cat, "confidence": round(conf, 2), "action": action,
@@ -327,7 +327,7 @@ def analyse(r, ctx):
         "protected": protected or bool(hard), "protection_facts": hard,
         "bulk": bulk or esp, "recurring_bulk_sender": recurring_bulk,
         "sender_messages": ctx.sender_n[frm], "sender_unseen": ctx.sender_unseen[frm],
-        "reason": "; ".join(dict.fromkeys(reasons))[:400] or "ingen sterke signaler",
+        "reason": "; ".join(dict.fromkeys(reasons))[:400] or "no strong signals",
         "signals": signals, "age_days": age,
         "sender_domain": reg or host, "llm_used": False,
     }
@@ -353,14 +353,14 @@ def merge_llm(res, verdict):
     out["llm_used"] = True
     out["llm"] = verdict
     lcat, lconf = verdict["category"], verdict["confidence"]
-    note = "lokal LLM: %s" % verdict["reason"]
+    note = "local LLM: %s" % verdict["reason"]
     if res["protection_facts"]:
         if lcat in PROTECTED and lcat != res["category"] and lconf >= 0.7:
             out["category"] = lcat
     elif lcat in PROTECTED and res["threat_score"] >= 8:
         # Phishing imitates legitimate mail: the LLM must not launder a rule-detected threat.
         out["action"] = res["action"]
-        note += " (LLM foreslo %s, men regelmotoren fant sterke trusselsignaler)" % lcat
+        note += " (LLM suggested %s, but the rule engine found strong threat signals)" % lcat
     elif lcat in PROTECTED and lconf >= 0.6:
         out.update(category=lcat, protected=True,
                    confidence=round(max(res["confidence"], lconf * 0.9), 2),
@@ -376,7 +376,7 @@ def merge_llm(res, verdict):
                 out["action"] = "archive_candidate"
     elif lcat != res["category"] and lconf >= 0.8:
         out["action"] = "review"
-        note += " (uenig med regelmotoren: %s)" % lcat
+        note += " (disagrees with the rule engine: %s)" % lcat
     elif lcat == res["category"]:
         out["confidence"] = round(min(0.98, res["confidence"] + 0.1), 2)
     if verdict.get("phishing_suspected") and not out["protected"]:
@@ -396,9 +396,9 @@ def classify_all(records, account=None, llm=None, llm_mode="uncertain", llm_max=
         if r.get("folder_role") in ("sent", "drafts"):
             res = {"category": "important_or_personal", "confidence": 1.0, "action": "keep",
                    "threat_score": 0, "threat_kind": None, "protected": True,
-                   "protection_facts": ["egen sendt melding/utkast"], "bulk": False,
+                   "protection_facts": ["own sent message/draft"], "bulk": False,
                    "recurring_bulk_sender": False, "sender_messages": 0, "sender_unseen": 0,
-                   "reason": "egen sendt melding eller utkast", "signals": [], "age_days": None,
+                   "reason": "own sent message or draft", "signals": [], "age_days": None,
                    "sender_domain": "", "llm_used": False, "own_message": True}
         else:
             res = analyse(r, ctx)
@@ -462,10 +462,10 @@ def main(argv=None):
     used = sum(1 for r in results if r["llm_used"])
     log.write("classify_done", messages=len(results), categories=dict(cats), actions=dict(acts),
               llm_used=used)
-    print("\nKlassifisert %d meldinger lokalt (lokal LLM brukt på %d)." % (len(results), used))
-    print("Kategorier:", dict(cats))
-    print("Anbefalte handlinger:", dict(acts))
-    print("Ingen e-post er endret.")
+    print("\nClassified %d messages locally (local LLM used on %d)." % (len(results), used))
+    print("Categories:", dict(cats))
+    print("Recommended actions:", dict(acts))
+    print("No mail was modified.")
     return results
 
 

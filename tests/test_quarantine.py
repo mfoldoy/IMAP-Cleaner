@@ -84,7 +84,7 @@ class QuarantineTests(unittest.TestCase):
         n = len(plan["items"])
         self.assertGreater(n, 0)
         before_total = sum(self.count().values())
-        res, _ = self.apply("--execute", confirm=lambda p: "FLYTT %d" % n)
+        res, _ = self.apply("--execute", confirm=lambda p: "MOVE %d" % n)
         self.assertEqual(res["moved"], n)
         after = self.count()
         self.assertEqual(sum(after.values()), before_total)  # nothing lost
@@ -103,7 +103,7 @@ class QuarantineTests(unittest.TestCase):
         folder = plan["items"][0]["folder"]
         self.state.boxes[folder][1].uidvalidity += 1
         before = self.count()
-        res, out = self.apply("--execute", confirm=lambda p: "FLYTT 0")
+        res, out = self.apply("--execute", confirm=lambda p: "MOVE 0")
         self.assertEqual(res["moved"], 0)
         self.assertIn("UIDVALIDITY", out)
         self.assertEqual(self.count(), before)
@@ -127,14 +127,14 @@ class QuarantineTests(unittest.TestCase):
         self.state.capability = "IMAP4rev1"
         n = len(plan["items"])
         with self.assertRaises(RuntimeError):
-            self.apply("--execute", confirm=lambda p: "FLYTT %d" % n)
+            self.apply("--execute", confirm=lambda p: "MOVE %d" % n)
         self.assertEqual([c for c in self.state.writes() if c[0] == "UID"], [])
 
     def test_uidplus_copy_fallback(self):
         plan = self.make_plan()
         self.state.capability = "IMAP4rev1 UIDPLUS"
         n = len(plan["items"])
-        res, _ = self.apply("--execute", confirm=lambda p: "FLYTT %d" % n)
+        res, _ = self.apply("--execute", confirm=lambda p: "MOVE %d" % n)
         self.assertEqual(res["moved"], n)
 
 

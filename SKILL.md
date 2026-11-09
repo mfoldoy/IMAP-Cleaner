@@ -16,7 +16,7 @@ metadata:
 Direct IMAP audit of the user's mailbox (Outlook is only the client). Everything runs locally; mail content is never sent to any external service.
 
 ## When to Use
-- "Rydd i postkassen", "finn spam/phishing/nyhetsbrev", "analyser e-posten min".
+- "Clean up my mailbox", "find spam/phishing/newsletters", "analyse my email".
 - Do NOT use for SMTP/sending, or for other providers without changing host settings.
 
 ## Server
@@ -44,7 +44,7 @@ cd <skill dir>            # ...\hermes\skills\email\outlook-cleaner
 .\run-audit.ps1                           # export -> classify (rules) -> report
 .\run-audit.ps1 -Llm ollama -Model qwen2.5:7b-instruct   # + local LLM for uncertain mail
 ```
-Outputs in `reports\`: `report.md` (Norwegian: summary, top senders, newsletter/marketing, spam/phishing, false positives in Junk, uncertain, recommended actions, method), `candidates.csv`, `classified.jsonl`, `mailbox-audit.jsonl` (private content, keep local).
+Outputs in `reports\`: `report.md` (summary, top senders, newsletter/marketing, spam/phishing, false positives in Junk, uncertain, recommended actions, method), `candidates.csv`, `classified.jsonl`, `mailbox-audit.jsonl` (private content, keep local).
 
 Categories: `important_or_personal`, `work`, `financial_or_receipt`, `government_or_legal`, `security_or_account`, `newsletter`, `marketing`, `automated_notification`, `spam_or_phishing`, `low_value`, `uncertain`. Actions: `keep`, `review`, `archive_candidate`, `quarantine_candidate`.
 
@@ -53,7 +53,7 @@ Ask the user which exact categories/senders/folders to process. Then:
 ```powershell
 py -3 scripts\quarantine.py plan --category marketing --sender example.com   # writes reports\plan.json, no IMAP
 py -3 scripts\quarantine.py apply --user "<email>"                           # verified DRY RUN (still read-only)
-py -3 scripts\quarantine.py apply --user "<email>" --execute                 # moves after typing: FLYTT <N>
+py -3 scripts\quarantine.py apply --user "<email>" --execute                 # moves after typing: MOVE <N>
 ```
 - Moves go to `Hermes-Review` (created if missing) using `UID MOVE` or `COPY + \Deleted + UID EXPUNGE <exact uids>` (UIDPLUS). Without either, it refuses.
 - UIDVALIDITY and Message-ID are re-verified right before every move; mismatches are skipped.
@@ -72,6 +72,6 @@ py -3 -W ignore -m unittest discover -s tests    # offline mock-IMAP suite (read
 
 ## Pitfalls
 - Non-interactive terminals cannot show the hidden password prompt; have the user run the command.
-- Folder names are modified UTF-7 (æøå) and may contain spaces; use the provided parser, not string splits.
+- Folder names are modified UTF-7 (e.g. non-ASCII letters) and may contain spaces; use the provided parser, not string splits.
 - After a UIDVALIDITY change, old exports/plans are invalid; re-run the audit.
 - Quarantine only after the audit completed; the export is a snapshot.

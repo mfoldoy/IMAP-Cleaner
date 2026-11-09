@@ -12,14 +12,16 @@ import os
 from collections import Counter, defaultdict
 from datetime import datetime
 
-CAT_NO = {
-    "important_or_personal": "Viktig/personlig", "work": "Jobb", "financial_or_receipt": "Økonomi/kvittering",
-    "government_or_legal": "Offentlig/juridisk", "security_or_account": "Sikkerhet/konto",
-    "newsletter": "Nyhetsbrev", "marketing": "Markedsføring", "automated_notification": "Automatisk varsling",
-    "spam_or_phishing": "Spam/phishing", "low_value": "Lav verdi", "uncertain": "Usikker",
+CAT_LABEL = {
+    "important_or_personal": "Important/personal", "work": "Work", "financial_or_receipt": "Financial/receipt",
+    "government_or_legal": "Government/legal", "security_or_account": "Security/account",
+    "newsletter": "Newsletter", "marketing": "Marketing", "automated_notification": "Automated notification",
+    "spam_or_phishing": "Spam/phishing", "low_value": "Low value", "uncertain": "Uncertain",
 }
-ACT_NO = {"keep": "Behold", "review": "Se over", "archive_candidate": "Arkivkandidat",
-          "quarantine_candidate": "Karantenekandidat"}
+ACT_LABEL = {"keep": "Keep", "review": "Review", "archive_candidate": "Archive candidate",
+             "quarantine_candidate": "Quarantine candidate"}
+PROTECTED_CATS = ("important_or_personal", "work", "financial_or_receipt", "government_or_legal",
+                  "security_or_account")
 
 
 def load(path):
@@ -52,7 +54,7 @@ def sender_rows(items, top=None):
         cats = Counter(r["category"] for r in rs).most_common(1)[0][0]
         acts = Counter(r["action"] for r in rs).most_common(1)[0][0]
         unseen = sum(1 for r in rs if not r["seen"])
-        rows.append([addr or "(ukjent)", len(rs), unseen, CAT_NO.get(cats, cats), ACT_NO.get(acts, acts)])
+        rows.append([addr or "(unknown)", len(rs), unseen, CAT_LABEL.get(cats, cats), ACT_LABEL.get(acts, acts)])
     return rows[:top] if top else rows
 
 
@@ -62,7 +64,8 @@ def msg_rows(items, limit):
              "%.2f" % r["confidence"], r["reason"]] for r in items[:limit]]
 
 
-MSG_HEAD = ["Mappe", "UID", "Dato", "Avsender", "Emne", "Konf.", "Begrunnelse"]
+MSG_HEAD = ["Folder", "UID", "Date", "Sender", "Subject", "Conf.", "Reason"]
+SENDER_HEAD = ["Sender", "Messages", "Unread", "Main category", "Main action"]
 
 
 def build_markdown(res, meta):
@@ -72,74 +75,72 @@ def build_markdown(res, meta):
     acts = Counter(r["action"] for r in inc)
     total = len(inc)
     md = []
-    md.append("# Postkasserapport (kun lesing)\n")
-    md.append("Generert %s. Ingen e-poster er flyttet, slettet eller endret.\n" % datetime.now().strftime("%Y-%m-%d %H:%M"))
-    md.append("> Denne filen inneholder private opplysninger. Behold den lokalt; ikke last den opp eller lim den inn i en nettbasert tjeneste.\n")
+    md.append("# Mailbox report (read-only)\n")
+    md.append("Generated %s. No messages were moved, deleted or modified.\n" % datetime.now().strftime("%Y-%m-%d %H:%M"))
+    md.append("> This file contains private information. Keep it local; do not upload it or paste it into an online service.\n")
 
-    md.append("## 1. Sammendrag\n")
-    md.append("- Innkommende/lagrede meldinger analysert: **%d** (pluss %d egne sendte/utkast som alltid beholdes)\n" % (total, len(own)))
-    md.append("- Lokal LLM brukt på %d meldinger.\n" % sum(1 for r in res if r.get("llm_used")))
-    md.append("\n### Per kategori\n")
-    md.append(table(["Kategori", "Antall", "Andel"], [[CAT_NO.get(c, c), n, "%.1f%%" % (100 * n / total if total else 0)]
-                                                      for c, n in cats.most_common()]))
-    md.append("\n### Per mappe og kategori\n")
+    md.append("## 1. Summary\n")
+    md.append("- Received/stored messages analysed: **%d** (plus %d own sent/draft messages, which are always kept)\n" % (total, len(own)))
+    md.append("- Local LLM used on %d messages.\n" % sum(1 for r in res if r.get("llm_used")))
+    md.append("\n### By category\n")
+    md.append(table(["Category", "Messages", "Share"], [[CAT_LABEL.get(c, c), n, "%.1f%%" % (100 * n / total if total else 0)]
+                                                        for c, n in cats.most_common()]))
+    md.append("\n### By folder and category\n")
     per_folder = defaultdict(Counter)
     for r in inc:
         per_folder[r["folder"]][r["category"]] += 1
-    md.append(table(["Mappe", "Totalt", "Beskyttet", "Bulk (nyhetsbrev/markedsføring)", "Spam/phishing", "Usikker"],
-                    [[f, sum(c.values()),
-                      sum(v for k, v in c.items() if k in ("important_or_personal", "work", "financial_or_receipt", "government_or_legal", "security_or_account")),
+    md.append(table(["Folder", "Total", "Protected", "Bulk (newsletter/marketing)", "Spam/phishing", "Uncertain"],
+                    [[f, sum(c.values()), sum(v for k, v in c.items() if k in PROTECTED_CATS),
                       c["newsletter"] + c["marketing"], c["spam_or_phishing"], c["uncertain"]]
                      for f, c in sorted(per_folder.items())]))
 
-    md.append("\n## 2. Avsendere med størst volum (topp 25)\n")
-    md.append(table(["Avsender", "Antall", "Uleste", "Hovedkategori", "Hovedhandling"], sender_rows(inc, 25)))
+    md.append("\n## 2. Top senders by volume (top 25)\n")
+    md.append(table(SENDER_HEAD, sender_rows(inc, 25)))
 
     bulk = [r for r in inc if r["category"] in ("newsletter", "marketing") and not r["protected"]]
-    md.append("\n## 3. Nyhetsbrev- og markedsføringskandidater\n")
-    md.append("%d meldinger fra %d avsendere. «Uleste» viser hvor mange du aldri har åpnet.\n\n" %
+    md.append("\n## 3. Newsletter and marketing candidates\n")
+    md.append("%d messages from %d senders. \"Unread\" shows how many you never opened.\n\n" %
               (len(bulk), len({r['from_addr'] for r in bulk})))
-    md.append(table(["Avsender", "Antall", "Uleste", "Hovedkategori", "Hovedhandling"], sender_rows(bulk, 60)))
+    md.append(table(SENDER_HEAD, sender_rows(bulk, 60)))
 
     threats = [r for r in inc if r["category"] == "spam_or_phishing"]
     phish = [r for r in threats if r.get("threat_kind") == "phishing"]
-    md.append("\n## 4. Spam- og phishingkandidater\n")
-    md.append("**Phishing (%d):** ikke åpne lenker eller vedlegg i disse meldingene.\n\n" % len(phish))
+    md.append("\n## 4. Spam and phishing candidates\n")
+    md.append("**Phishing (%d):** do not open links or attachments in these messages.\n\n" % len(phish))
     md.append(table(MSG_HEAD, msg_rows(phish, 200)))
-    md.append("\n**Øvrig spam (%d):**\n\n" % (len(threats) - len(phish)))
+    md.append("\n**Other spam (%d):**\n\n" % (len(threats) - len(phish)))
     md.append(table(MSG_HEAD, msg_rows([r for r in threats if r not in phish], 200)))
 
     junk_ok = [r for r in inc if r["folder_role"] == "junk" and r["protected"]]
-    md.append("\n## 5. Mulige falske positiver i søppelpost (beskyttet innhold)\n")
-    md.append("%d meldinger i søppelpost ser legitime ut og bør vurderes flyttet tilbake manuelt.\n\n" % len(junk_ok))
+    md.append("\n## 5. Possible false positives in Junk (protected content)\n")
+    md.append("%d messages in Junk look legitimate and should be considered for manual restore.\n\n" % len(junk_ok))
     md.append(table(MSG_HEAD, msg_rows(junk_ok, 100)))
-    md.append("\n### Beskyttede meldinger totalt\n")
-    md.append(table(["Kategori", "Antall"], [[CAT_NO[c], cats[c]] for c in
-               ("important_or_personal", "work", "financial_or_receipt", "government_or_legal", "security_or_account")]))
+    md.append("\n### Protected messages in total\n")
+    md.append(table(["Category", "Messages"], [[CAT_LABEL[c], cats[c]] for c in PROTECTED_CATS]))
 
     unc = [r for r in inc if r["category"] == "uncertain" or r["action"] == "review"]
-    md.append("\n## 6. Usikre meldinger som krever manuell vurdering (%d)\n" % len(unc))
+    md.append("\n## 6. Uncertain messages needing manual review (%d)\n" % len(unc))
     md.append(table(MSG_HEAD, msg_rows(unc, 200)))
     if len(unc) > 200:
-        md.append("\n(Viser 200 av %d; se candidates.csv for alle.)\n" % len(unc))
+        md.append("\n(Showing 200 of %d; see candidates.csv for all.)\n" % len(unc))
 
-    md.append("\n## 7. Anbefalte handlinger og estimert effekt\n")
+    md.append("\n## 7. Recommended actions and estimated impact\n")
     q = [r for r in inc if r["action"] == "quarantine_candidate"]
     a = [r for r in inc if r["action"] == "archive_candidate"]
-    md.append(table(["Handling", "Meldinger", "Andel av postkassen"],
-                    [[ACT_NO[k], acts[k], "%.1f%%" % (100 * acts[k] / total if total else 0)] for k in ACT_NO]))
-    md.append("\n1. **Karantene (%d):** flyttes til `Hermes-Review` etter din godkjenning – kan angres ved å flytte tilbake.\n" % len(q))
-    md.append("2. **Arkiv (%d):** lav risiko; kan flyttes til `Hermes-Review` eller arkivmappe etter godkjenning.\n" % len(a))
-    md.append("3. **Se over (%d):** ingen automatisk handling anbefales.\n" % acts["review"])
-    md.append("4. **Behold (%d):** viktig/beskyttet – røres ikke.\n" % acts["keep"])
-    md.append("5. Avmelding og permanent sletting krever egen, separat godkjenning og er ikke gjort.\n")
-    md.append("\nEstimert effekt hvis 1 og 2 godkjennes: **%d** færre meldinger i aktive mapper (%.1f%%).\n" %
+    md.append(table(["Action", "Messages", "Share of mailbox"],
+                    [[ACT_LABEL[k], acts[k], "%.1f%%" % (100 * acts[k] / total if total else 0)] for k in ACT_LABEL]))
+    md.append("\n1. **Quarantine (%d):** move to `Hermes-Review` after your approval; reversible by moving back.\n" % len(q))
+    md.append("2. **Archive (%d):** low risk; can be moved to `Hermes-Review` or an archive folder after approval.\n" % len(a))
+    md.append("3. **Review (%d):** no automatic action recommended.\n" % acts["review"])
+    md.append("4. **Keep (%d):** important/protected; left untouched.\n" % acts["keep"])
+    md.append("5. Unsubscribing and permanent deletion require separate explicit approval and have not been done.\n")
+    md.append("\nEstimated effect if 1 and 2 are approved: **%d** fewer messages in active folders (%.1f%%).\n" %
               (len(q) + len(a), 100 * (len(q) + len(a)) / total if total else 0))
-    md.append("\n## 8. Metode og sikkerhet\n")
-    md.append("- Klassifisering er gjort lokalt (regelmotor + valgfri lokal LLM). Ingen e-postinnhold er sendt til eksterne tjenester.\n"
-              "- Beskyttelse: meldinger du har besvart/flagget, avsendere du har skrevet til, eget domene, samtaletråder, "
-              "banker/offentlige/sikkerhetsmeldinger har forrang og blir aldri foreslått for karantene.\n"
-              "- Alle handlinger er loggført i `logs/actions.jsonl` (uten passord).\n")
+    md.append("\n## 8. Method and safety\n")
+    md.append("- Classification was done locally (rule engine + optional local LLM). No mail content was sent to external services.\n"
+              "- Protection: messages you answered/flagged, senders you have written to, your own domain, conversation threads, "
+              "and bank/government/security messages take precedence and are never proposed for quarantine.\n"
+              "- All actions are logged in `logs/actions.jsonl` (without passwords).\n")
     return "\n".join(md)
 
 
@@ -168,14 +169,14 @@ def main(argv=None):
     write_csv(res, csv_path)
     inc = [r for r in res if not r.get("own_message")]
     cats, acts = Counter(r["category"] for r in inc), Counter(r["action"] for r in inc)
-    print("Rapport skrevet (kun aggregerte tall vises her):")
-    print("  Meldinger analysert: %d" % len(inc))
+    print("Report written (only aggregate numbers are shown here):")
+    print("  Messages analysed: %d" % len(inc))
     for c, n in cats.most_common():
         print("  %-24s %d" % (c, n))
-    print("  Anbefalte handlinger:", dict(acts))
-    print("  Rapport:    %s" % md_path)
-    print("  Kandidater: %s" % csv_path)
-    print("Ingen e-post er endret. Filene inneholder private data og skal bli lokalt.")
+    print("  Recommended actions:", dict(acts))
+    print("  Report:     %s" % md_path)
+    print("  Candidates: %s" % csv_path)
+    print("No mail was modified. The files contain private data and must stay local.")
 
 
 if __name__ == "__main__":
